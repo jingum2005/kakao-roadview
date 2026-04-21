@@ -3,37 +3,98 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<style>html,body,#roadview{margin:0;padding:0;width:100%;height:100%;background:#f1efeb;overflow:hidden}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif}.msg{position:absolute;left:12px;right:12px;bottom:12px;z-index:2;background:rgba(34,34,34,.86);color:#fff;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.4}</style>
-<script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={{KAKAO_JAVASCRIPT_KEY}}"></script>
+<style>
+html, body, #roadview {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: #f1efeb;
+  overflow: hidden;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+}
+.msg {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
+  background: rgba(34, 34, 34, .86);
+  color: #fff;
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+</style>
 </head>
 <body data-rv-error="">
 <div id="roadview"></div>
+
 <script>
-(function(){
+(function () {
   const params = new URLSearchParams(location.search);
   const lat = Number(params.get('lat'));
   const lng = Number(params.get('lng'));
-  const position = new kakao.maps.LatLng(lat, lng);
-  const roadview = new kakao.maps.Roadview(document.getElementById('roadview'));
-  const client = new kakao.maps.RoadviewClient();
-  function fail(msg){
+  const jskey = params.get('jskey');
+
+  function fail(msg) {
     document.body.setAttribute('data-rv-error', msg);
-    let old = document.querySelector('.msg'); if(old) old.remove();
-    let div = document.createElement('div'); div.className='msg'; div.textContent=msg; document.body.appendChild(div);
+    const old = document.querySelector('.msg');
+    if (old) old.remove();
+    const div = document.createElement('div');
+    div.className = 'msg';
+    div.textContent = msg;
+    document.body.appendChild(div);
   }
-  function tryOpen(radius){
-    client.getNearestPanoId(position, radius, function(panoId){
-      if (panoId) {
-        document.body.setAttribute('data-rv-error', '');
-        roadview.setPanoId(panoId, position);
-      } else if (radius < 300) {
-        tryOpen(300);
-      } else {
-        fail('근처 로드뷰를 찾지 못했습니다.');
+
+  if (!jskey) {
+    fail('JavaScript 키가 없습니다.');
+    return;
+  }
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    fail('좌표(lat/lng)가 없습니다.');
+    return;
+  }
+
+  const script = document.createElement('script');
+  script.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + encodeURIComponent(jskey);
+
+  script.onload = function () {
+    try {
+      const position = new kakao.maps.LatLng(lat, lng);
+      const roadview = new kakao.maps.Roadview(document.getElementById('roadview'));
+      const client = new kakao.maps.RoadviewClient();
+
+      function tryOpen(radius) {
+        client.getNearestPanoId(position, radius, function (panoId) {
+          if (panoId) {
+            document.body.setAttribute('data-rv-error', '');
+            const old = document.querySelector('.msg');
+            if (old) old.remove();
+            roadview.setPanoId(panoId, position);
+          } else if (radius < 300) {
+            tryOpen(300);
+          } else {
+            fail('근처 로드뷰를 찾지 못했습니다.');
+          }
+        });
       }
-    });
-  }
-  try { tryOpen(50); } catch(e) { fail('로드뷰 초기화 실패: ' + e); }
+
+      tryOpen(50);
+    } catch (e) {
+      fail('로드뷰 초기화 실패: ' + e);
+    }
+  };
+
+  script.onerror = function () {
+    fail('카카오 SDK 로드 실패');
+  };
+
+  document.head.appendChild(script);
 })();
 </script>
 </body>
