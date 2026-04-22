@@ -12,16 +12,14 @@ html, body, #roadview {
   background: #f1efeb;
   overflow: hidden;
 }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-}
+body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
 .msg {
   position: absolute;
   left: 12px;
   right: 12px;
   bottom: 12px;
   z-index: 2;
-  background: rgba(34, 34, 34, .86);
+  background: rgba(34,34,34,.86);
   color: #fff;
   border-radius: 14px;
   padding: 10px 12px;
@@ -61,33 +59,37 @@ body {
   }
 
   const script = document.createElement('script');
-  script.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + encodeURIComponent(jskey);
+  script.src =
+    'https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&appkey=' +
+    encodeURIComponent(jskey);
 
   script.onload = function () {
-    try {
-      const position = new kakao.maps.LatLng(lat, lng);
-      const roadview = new kakao.maps.Roadview(document.getElementById('roadview'));
-      const client = new kakao.maps.RoadviewClient();
+    kakao.maps.load(function () {
+      try {
+        const position = new kakao.maps.LatLng(lat, lng);
+        const roadview = new kakao.maps.Roadview(document.getElementById('roadview'));
+        const client = new kakao.maps.RoadviewClient();
 
-      function tryOpen(radius) {
-        client.getNearestPanoId(position, radius, function (panoId) {
-          if (panoId) {
-            document.body.setAttribute('data-rv-error', '');
-            const old = document.querySelector('.msg');
-            if (old) old.remove();
-            roadview.setPanoId(panoId, position);
-          } else if (radius < 300) {
-            tryOpen(300);
-          } else {
-            fail('근처 로드뷰를 찾지 못했습니다.');
-          }
-        });
+        function tryOpen(radius) {
+          client.getNearestPanoId(position, radius, function (panoId) {
+            if (panoId) {
+              document.body.setAttribute('data-rv-error', '');
+              const old = document.querySelector('.msg');
+              if (old) old.remove();
+              roadview.setPanoId(panoId, position);
+            } else if (radius < 300) {
+              tryOpen(300);
+            } else {
+              fail('근처 로드뷰를 찾지 못했습니다.');
+            }
+          });
+        }
+
+        tryOpen(50);
+      } catch (e) {
+        fail('로드뷰 초기화 실패: ' + e);
       }
-
-      tryOpen(50);
-    } catch (e) {
-      fail('로드뷰 초기화 실패: ' + e);
-    }
+    });
   };
 
   script.onerror = function () {
