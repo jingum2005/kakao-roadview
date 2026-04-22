@@ -48,6 +48,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
     document.body.appendChild(div);
   }
 
+  function postRoadviewState(type, payload) {
+    try {
+      if (window.RoadviewBridge && typeof window.RoadviewBridge.postMessage === 'function') {
+        window.RoadviewBridge.postMessage(JSON.stringify(Object.assign({ type: type }, payload || {})));
+      }
+    } catch (_) {}
+  }
+
   if (!jskey) {
     fail('JavaScript 키가 없습니다.');
     return;
@@ -59,9 +67,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
   }
 
   const script = document.createElement('script');
-  script.src =
-    'https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&appkey=' +
-    encodeURIComponent(jskey);
+  script.src = 'https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&appkey=' + encodeURIComponent(jskey);
 
   script.onload = function () {
     kakao.maps.load(function () {
@@ -69,6 +75,68 @@ body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
         const position = new kakao.maps.LatLng(lat, lng);
         const roadview = new kakao.maps.Roadview(document.getElementById('roadview'));
         const client = new kakao.maps.RoadviewClient();
+        let listenersAttached = false;
+        let publishTimer = null;
+        let lastPublishedKey = '';
+
+        function publishPosition(force) {
+          try {
+            const pos = roadview.getPosition();
+            if (!pos) return;
+            const vp = roadview.getViewpoint ? roadview.getViewpoint() : null;
+            const latValue = pos.getLat();
+            const lngValue = pos.getLng();
+            const panValue = vp && typeof vp.pan === 'number' ? vp.pan : null;
+            const key = [
+              Number.isFinite(latValue) ? latValue.toFixed(8) : '',
+              Number.isFinite(lngValue) ? lngValue.toFixed(8) : '',
+              typeof panValue === 'number' ? panValue.toFixed(2) : ''
+            ].join('|');
+            if (!force && key === lastPublishedKey) return;
+            lastPublishedKey = key;
+            postRoadviewState('position', {
+              lat: latValue,
+              lng: lngValue,
+              pan: panValue
+            });
+          } catch (_) {}
+        }
+
+        function startPublishTimer() {
+          if (publishTimer) return;
+          publishTimer = setInterval(function() {
+            publishPosition(false);
+          }, 250);
+        }
+
+        function attachEvents() {
+          if (listenersAttached) return;
+          listenersAttached = true;
+          kakao.maps.event.addListener(roadview, 'viewpoint_changed', function () {
+            publishPosition(false);
+          });
+          kakao.maps.event.addListener(roadview, 'position_changed', function () {
+            publishPosition(true);
+          });
+          kakao.maps.event.addListener(roadview, 'panoid_changed', function () {
+            publishPosition(true);
+          });
+          kakao.maps.event.addListener(roadview, 'init', function() {
+            startPublishTimer();
+            publishPosition(true);
+            setTimeout(function(){ publishPosition(true); }, 150);
+            setTimeout(function(){ publishPosition(true); }, 500);
+          });
+        }
+
+        attachEvents();
+        startPublishTimer();
+        window.addEventListener('beforeunload', function () {
+          if (publishTimer) {
+            clearInterval(publishTimer);
+            publishTimer = null;
+          }
+        });
 
         function tryOpen(radius) {
           client.getNearestPanoId(position, radius, function (panoId) {
@@ -77,6 +145,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
               const old = document.querySelector('.msg');
               if (old) old.remove();
               roadview.setPanoId(panoId, position);
+              publishPosition(true);
+              setTimeout(function(){ publishPosition(true); }, 150);
+              setTimeout(function(){ publishPosition(true); }, 500);
+              setTimeout(function(){ publishPosition(true); }, 1000);
             } else if (radius < 300) {
               tryOpen(300);
             } else {
